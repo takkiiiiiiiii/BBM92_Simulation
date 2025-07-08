@@ -1,7 +1,7 @@
 import numpy as np
 
 # 入力ファイルと出力ファイルの名前を定義
-input_filename = 'qber_simul_bbm92_test1.npy'
+input_filename = 'qber_simul_bbm92_test2.npy'
 output_filename = 'qber_simul_bbm92_test99.npy'
 
 try:
@@ -9,7 +9,7 @@ try:
     data = np.load(input_filename)
 
     # 2. 読み込んだデータの各値に10を加算する
-    modified_data = data + 0.4
+    modified_data = data + 0.01
 
     # 3. 新しいファイル名でデータを保存する
     np.save(output_filename, modified_data)
