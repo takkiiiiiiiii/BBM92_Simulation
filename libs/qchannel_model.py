@@ -196,7 +196,7 @@ def compute_avg_qber(
 
     return avg_err_bits/avg_yield, avg_yield
 
-
+# 使用しない
 def compute_Q_1_e_1_ex(
         sigma_theta_x, sigma_theta_y, slant_distance,
         mu_x, mu_y, zenith_angle_rad, h_OGS, h_atm, w_L, tau_zen,
@@ -257,7 +257,7 @@ def compute_Q_1_e_1_ex(
     return Q_1_lb, e_1_ub
 
 
-
+# 使用しない
 def compute_SKR(
         qber, avg_yield, Q_1, e_1, sifting_coefficient=0.5, p_estimation=0.75,
         kr_efficiency=1, decoy_coefficient=0.5, rep_rate=1e9):
@@ -271,14 +271,113 @@ def compute_SKR(
     else:
         return term_1 * (term_2 + term_3)
 
-
 def compute_yield(eta, n_s, p_dark, p_AP):
     param_q = (p_dark*(1+p_AP)) + (1-np.exp(-n_s*eta))*(1+p_AP)
     return param_q
 
 
 def entropy_func(p):
+    if p == 0 or p == 1:
+        return 0
+    p = np.asarray(p)
     res = -p * np.log2(p) - (1-p) * np.log2(1-p)
     return res
 
+def compute_SKR_BBM92_finite(total_sifted_bits, qber_z, qber_x, f_ec):
+    """
+    論文(Ecker et al.)の式(1)に基づき、有限長鍵の長さを計算します。
+    """
+    # 2つの基底で得られるビット数は等しいと仮定
+    N_s_z = total_sifted_bits / 2.0
+    N_s_x = total_sifted_bits / 2.0
+    
+    # 位相誤り率をQBERから推定
+    E_ph_z = qber_x
+    E_ph_x = qber_z
 
+    # Z基底から得られる安全な鍵の長さ
+    term_z = N_s_z * (1 - entropy_func(E_ph_z) - f_ec * entropy_func(qber_z))
+    
+    # X基底から得られる安全な鍵の長さ
+    term_x = N_s_x * (1 - entropy_func(E_ph_x) - f_ec * entropy_func(qber_x))
+    
+    final_key_length = term_z + term_x
+    
+    return max(0, final_key_length)
+
+
+
+def compute_SKR_without_Eve(qber_alice, yield_alice, qber_bob, yield_bob, f_ec=1.16, rep_rate=1e9):
+    """
+    Eveを考慮せず、アリスとボブの性能からSecret Key Rateを計算します。
+    
+    Args:
+        qber_alice (float): 衛星-アリス間のQBER
+        yield_alice (float): アリスのYield（ふるい分け確率）
+        qber_bob (float): 衛星-ボブ間のQBER
+        yield_bob (float): ボブのYield
+        [cite_start]f_ec (float): 誤り訂正符号の効率。1.16は論文の値 [cite: 137]
+        rep_rate (float): 光子ソースの生成レート (pulses/sec)
+
+    Returns:
+        float: Secret Key Rate (bits/sec)
+    """
+    
+    # --- ステップ1: システム全体の性能を計算 ---
+    
+    # アリスとボブ両方がビットを検出する確率（同時検出確率）
+    yield_system = yield_alice * yield_bob
+    
+    # ふるい分け鍵におけるエラー率（アリスとボブの記録が食い違う確率）
+    qber_system = (1 - qber_alice) * qber_bob + qber_alice * (1 - qber_bob)
+    
+    # --- ステップ2: 相互情報量からエラー訂正コストを引く ---
+    
+    # エラー訂正によって消費される情報量の割合
+    # H(E_sys)は、QBERがqber_systemの場合のエントロピー
+    error_correction_cost = f_ec * entropy_func(qber_system)
+    
+    # 1ビットあたりの共有情報量からエラー訂正コストを引く
+    # これが、ふるい分け鍵1ビットから得られる安全な鍵の割合（秘匿率）
+    secure_key_fraction = 1 - error_correction_cost
+    
+    # --- ステップ3: 最終的な鍵レートを計算 ---
+    
+    # 1秒あたりのふるい分けビット数
+    sifted_key_rate = yield_system * rep_rate
+    
+    # 1秒あたりの安全な鍵のビット数 (SKR)
+    skr = sifted_key_rate * secure_key_fraction
+    
+    # SKRは負の値を取り得ない
+    return max(0, skr)
+
+    
+def compute_SKR_final(qber_system, yield_alice, yield_bob, f_ec=1.16, rep_rate=1e9):
+    """
+    システム全体のQBERと、個別のYieldからSKRを計算します。
+    
+    Args:
+        qber_system (float): システム全体のQBER
+        yield_alice (float): アリスのYield
+        yield_bob (float): ボブのYield
+        f_ec (float): 誤り訂正符号の効率
+        rep_rate (float): 光子ソースの生成レート (pulses/sec)
+
+    Returns:
+        float: Secret Key Rate (bits/sec)
+    """
+    # 受け取った個別のYieldから、システム全体のYieldを計算
+    yield_system = yield_alice * yield_bob
+    
+    # エラー訂正のコストを計算
+    error_correction_cost = f_ec * entropy_func(qber_system)
+    
+    # 安全な鍵の割合を計算 (Eveは考慮しない)
+    secure_key_fraction = 1 - error_correction_cost
+    
+    # 最終的なSKRを計算
+    sifted_key_rate = yield_system * rep_rate
+    skr = sifted_key_rate * secure_key_fraction
+    
+    return max(0, skr)
