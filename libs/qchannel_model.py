@@ -381,3 +381,88 @@ def compute_SKR_final(qber_system, yield_alice, yield_bob, f_ec=1.16, rep_rate=1
     skr = sifted_key_rate * secure_key_fraction
     
     return max(0, skr)
+
+
+def yield_from_photon_number(n, Y0_A, Y0_B, eta_A, eta_B):
+    term_A = 1 - (1 - Y0_A) * (1 - eta_A)**n
+    term_B = 1 - (1 - Y0_B) * (1 - eta_B)**n
+    Yn = term_A * term_B
+    return Yn
+
+def Yn_func(n, Y0A, Y0B, etaA, etaB):
+    """
+    Calculates Yn = [1 - (1 - Y0A)*(1 - etaA)**n] * [1 - (1 - Y0B)*(1 - etaB)**n]
+    """
+    term_A = 1 - (1 - Y0A) * (1 - etaA) ** n
+    term_B = 1 - (1 - Y0B) * (1 - etaB) ** n
+    return term_A * term_B
+
+def photon_number_probability(n, wavelength):
+    """
+    Calculates the probability P(n) of having n photons in a pulse
+    """
+    if n < 0:
+        return 0.0
+    numerator = (n + 1) * (wavelength ** n)
+    denominator = (1 + wavelength) ** (n + 2)
+    return numerator / denominator
+
+
+def qber_ma_model(e0, ed, etaA, etaB, lambda_, Y0_A, Y0_B):
+    numerator = 2 * (e0 - ed) * etaA * etaB * lambda_ * (1 + lambda_)
+    denominator = (1 + etaA * lambda_) * (1 + etaB * lambda_) * (1 + etaA * lambda_ + etaB * lambda_ - etaA * etaB * lambda_)
+    Q_lambda = compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B)
+    print(f'Q_lambda : {Q_lambda}')
+    E_lambda = (e0 * Q_lambda - numerator / denominator) / Q_lambda
+    E_lambda = float(E_lambda)
+    return E_lambda
+
+def compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B):
+    """
+    Calculates the overall gain Q_lambda from Ma et al. (Eq. 9).
+    Parameters:
+        lambda_ (float): PDC parameter (lambda = sinh^2(χ), mu = 2*lambda)
+        eta_A (float): Total detection efficiency for Alice
+        eta_B (float): Total detection efficiency for Bob
+        Y0_A (float): Background (dark) count probability for Alice
+        Y0_B (float): Background (dark) count probability for Bob
+    Returns:
+        Q_lambda (float): Overall gain (coincidence detection probability per pulse)
+    """
+    term1 = (1 - Y0_A) / (1 + etaA * lambda_)**2
+    term2 = (1 - Y0_B) / (1 + etaB * lambda_)**2
+    term3 = ((1 - Y0_A) * (1 - Y0_B)) / (1 + (etaA + etaB) * lambda_)**2
+    # print("term1:", term1)
+    # print("term2:", term2)
+    # print("term3:", term3)
+    # print("Q_lambda:", Q_lambda)
+
+    Q_lambda = 1 - term1 - term2 + term3
+    return Q_lambda
+
+
+
+def pauli_x_error_probability(i, e_0, p_dark, e_pol, insta_eta_alice, insta_eta_bob):
+    if i == 0: # n = 0 (a0)
+        current_alice_qber = 0.5
+        current_bob_qber = 0.5
+    elif i == 1: # n = 1 (a1)
+        numerator_a = (e_0 * p_dark) + (e_pol * insta_eta_alice)
+        denominator_a = p_dark + insta_eta_alice
+        current_alice_qber = numerator_a / denominator_a if denominator_a != 0 else 1.0
+
+        numerator_b = (e_0 * p_dark) + (e_pol * insta_eta_bob)
+        denominator_b = p_dark + insta_eta_bob
+        current_bob_qber = numerator_b / denominator_b if denominator_b != 0 else 1.0
+    elif i == 2: # n = 2 (a2)
+        P_detect_channel_n2_alice = (1 - (1 - insta_eta_alice)**2)
+        P_detect_channel_n2_bob = (1 - (1 - insta_eta_bob)**2)
+
+        numerator_a = (e_pol * P_detect_channel_n2_alice * (2/3) + e_0 * P_detect_channel_n2_alice * (1/3) + p_dark)
+        denominator_a = (P_detect_channel_n2_alice + p_dark)
+        current_alice_qber = numerator_a / denominator_a if denominator_a != 0 else 1.0
+
+        numerator_b = (e_pol * P_detect_channel_n2_bob * (2/3) + e_0 * P_detect_channel_n2_bob * (1/3) + p_dark)
+        denominator_b = (P_detect_channel_n2_bob + p_dark)
+        current_bob_qber = numerator_b / denominator_b if denominator_b != 0 else 1.0
+    return current_alice_qber, current_bob_qber

@@ -39,7 +39,7 @@ def rvs_pointing_err(
     return eta_p
 
 
-def generate_Siftedkey(num_qubits, p_error_repeater, p_error_user, backend):
+def generate_Siftedkey(num_qubits, p_error_alice, p_error_bob, backend):
     bell_pair = int(num_qubits/2)
     repeater_basis = qrng(bell_pair, backend)
     user_basis = qrng(bell_pair, backend)
@@ -54,7 +54,7 @@ def generate_Siftedkey(num_qubits, p_error_repeater, p_error_user, backend):
     user_qubits = [i for i in range(1, num_qubits, 2)]
 
     # Apply the quantum error chanel
-    noise_model = apply_x_basis_measurement_noise(p_error_repeater, p_error_user, repeater_qubits, user_qubits)
+    noise_model = apply_x_basis_measurement_noise(p_error_alice, p_error_bob, repeater_qubits, user_qubits)
 
     # 測定（IDゲートにノイズをかけて、Xエラーとして再現）
     qc, repeater_bits, user_bits = alice_bob_measurement(qc, num_qubits, noise_model, backend)

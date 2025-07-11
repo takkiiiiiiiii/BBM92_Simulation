@@ -2,7 +2,8 @@
 a = 0.75
 
 # average number of photon
-n_s = 0.8
+n_s = 0.5
+n_s = 0.053
 
 # average number of photon of decoy-state signal
 n_d = 0.09
@@ -36,10 +37,20 @@ e_0 = 0.5
 
 # the background rate which includes the detector dark count
 # and other background contributions
-p_dark = 1e-4
+p_dark = 1e-5
 
 # After-pulsing probability
 p_AP = 2/100
 
 # Probability of the polarisation errors
-e_pol = 3.3/100
+e_pol = 1/100
+
+# Background count rates at Alice’s and Bob’s
+Y0_A = 6.02e-6
+Y0_B = 6.02e-6
+
+# Error rate of the detector
+e_d = 1.5 / 100
+
+# One half of the expected photon pair number n_s
+lambda_signal = n_s / 2
