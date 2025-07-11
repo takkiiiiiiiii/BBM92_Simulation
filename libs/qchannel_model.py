@@ -389,14 +389,6 @@ def yield_from_photon_number(n, Y0_A, Y0_B, eta_A, eta_B):
     Yn = term_A * term_B
     return Yn
 
-def Yn_func(n, Y0A, Y0B, etaA, etaB):
-    """
-    Calculates Yn = [1 - (1 - Y0A)*(1 - etaA)**n] * [1 - (1 - Y0B)*(1 - etaB)**n]
-    """
-    term_A = 1 - (1 - Y0A) * (1 - etaA) ** n
-    term_B = 1 - (1 - Y0B) * (1 - etaB) ** n
-    return term_A * term_B
-
 def photon_number_probability(n, wavelength):
     """
     Calculates the probability P(n) of having n photons in a pulse
