@@ -1,6 +1,7 @@
 import numpy as np
-from scipy.integrate import quad
+from scipy.integrate import quad, dblquad
 from scipy.special import erfc, erf
+
 # from scipy.stats import lognorm
 
 
@@ -372,14 +373,13 @@ def qber_ma_model(e0, ed, etaA, etaB, lambda_, Y0_A, Y0_B):
     return E_lambda
 
 
-
 def compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B):
     """
-    Calculates the overall gain Q_lambda from Ma et al. (Eq. 9).
+    Calculates the overall gain Q_lambda from Ma et al. (Eq. 9, full version).
     Parameters:
         lambda_ (float): PDC parameter (lambda = sinh^2(χ), mu = 2*lambda)
-        eta_A (float): Total detection efficiency for Alice
-        eta_B (float): Total detection efficiency for Bob
+        etaA (float): Total detection efficiency for Alice
+        etaB (float): Total detection efficiency for Bob
         Y0_A (float): Background (dark) count probability for Alice
         Y0_B (float): Background (dark) count probability for Bob
     Returns:
@@ -387,14 +387,12 @@ def compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B):
     """
     term1 = (1 - Y0_A) / (1 + etaA * lambda_)**2
     term2 = (1 - Y0_B) / (1 + etaB * lambda_)**2
-    term3 = ((1 - Y0_A) * (1 - Y0_B)) / (1 + (etaA + etaB) * lambda_)**2
-    # print("term1:", term1)
-    # print("term2:", term2)
-    # print("term3:", term3)
-    # print("Q_lambda:", Q_lambda)
+    denominator_term3 = (1 + etaA * lambda_ + etaB * lambda_ - etaA * etaB * lambda_)**2
+    term3 = ((1 - Y0_A) * (1 - Y0_B)) / denominator_term3
 
     Q_lambda = 1 - term1 - term2 + term3
     return Q_lambda
+
 
 def yield_from_photon_number(n, Y0_A, Y0_B, eta_A, eta_B):
     term_A = 1 - (1 - Y0_A) * (1 - eta_A)**n
@@ -441,27 +439,74 @@ def pauli_x_application_probability_bob(n, e_0, e_d, Yn, eta_A, eta_B):
 
 
 
-def pauli_x_error_probability_previous(i, e_0, p_dark, e_pol, insta_eta_alice, insta_eta_bob):
-    if i == 0: # n = 0 (a0)
-        current_alice_qber = 0.5
-        current_bob_qber = 0.5
-    elif i == 1: # n = 1 (a1)
-        numerator_a = (e_0 * p_dark) + (e_pol * insta_eta_alice)
-        denominator_a = p_dark + insta_eta_alice
-        current_alice_qber = numerator_a / denominator_a if denominator_a != 0 else 1.0
+def compute_avg_qber_bbm92_2d(
+        sigma_theta_x, sigma_theta_y, slant_distance_A, slant_distance_B,
+        mu_x, mu_y, zenith_angle_rad_A, zenith_angle_rad_B,
+        h_OGS, h_atm, w_L_A, w_L_B, tau_zen_A, tau_zen_B,
+        Cn2_profile, a, e_0, e_d, Y0_A, Y0_B, lambda_, wavelength):
 
-        numerator_b = (e_0 * p_dark) + (e_pol * insta_eta_bob)
-        denominator_b = p_dark + insta_eta_bob
-        current_bob_qber = numerator_b / denominator_b if denominator_b != 0 else 1.0
-    elif i == 2: # n = 2 (a2)
-        P_detect_channel_n2_alice = (1 - (1 - insta_eta_alice)**2)
-        P_detect_channel_n2_bob = (1 - (1 - insta_eta_bob)**2)
+    def channel_params(slant_distance, zenith_angle_rad, w_L, tau_zen):
+        sigma_x = sigma_theta_x * slant_distance
+        sigma_y = sigma_theta_y * slant_distance
+        w_Leq_squared = equivalent_beam_width_squared(a, w_L)
+        w_Leq = np.sqrt(w_Leq_squared)
+        sigma_mod = compute_sigma_mod(mu_x, mu_y, sigma_x, sigma_y)
+        varphi_mod = sigma_to_variance(sigma_mod, w_Leq)
+        return sigma_x, sigma_y, w_Leq, varphi_mod, w_L, tau_zen, zenith_angle_rad
 
-        numerator_a = (e_pol * P_detect_channel_n2_alice * (2/3) + e_0 * P_detect_channel_n2_alice * (1/3) + p_dark)
-        denominator_a = (P_detect_channel_n2_alice + p_dark)
-        current_alice_qber = numerator_a / denominator_a if denominator_a != 0 else 1.0
+    sigma_x_A, sigma_y_A, w_Leq_A, varphi_mod_A, w_L_A, tau_zen_A, zenith_angle_rad_A = channel_params(
+        slant_distance_A, zenith_angle_rad_A, w_L_A, tau_zen_A
+    )
+    sigma_x_B, sigma_y_B, w_Leq_B, varphi_mod_B, w_L_B, tau_zen_B, zenith_angle_rad_B = channel_params(
+        slant_distance_B, zenith_angle_rad_B, w_L_B, tau_zen_B
+    )
 
-        numerator_b = (e_pol * P_detect_channel_n2_bob * (2/3) + e_0 * P_detect_channel_n2_bob * (1/3) + p_dark)
-        denominator_b = (P_detect_channel_n2_bob + p_dark)
-        current_bob_qber = numerator_b / denominator_b if denominator_b != 0 else 1.0
-    return current_alice_qber, current_bob_qber
+    # Gain用積分
+    def integrand_gain(eta_A, eta_B):
+        Q_lambda = compute_Q_lambda(lambda_, eta_A, eta_B, Y0_A, Y0_B)
+
+        p_eta_A = transmitivity_pdf(
+            eta_A, mu_x, mu_y, sigma_x_A, sigma_y_A, zenith_angle_rad_A,
+            w_L_A, w_Leq_A, tau_zen_A, varphi_mod_A, wavelength,
+            h_OGS, h_atm, Cn2_profile, a
+        )
+        p_eta_B = transmitivity_pdf(
+            eta_B, mu_x, mu_y, sigma_x_B, sigma_y_B, zenith_angle_rad_B,
+            w_L_B, w_Leq_B, tau_zen_B, varphi_mod_B, wavelength,
+            h_OGS, h_atm, Cn2_profile, a
+        )
+        return Q_lambda * p_eta_A * p_eta_B
+
+    # Error bits用積分
+    def integrand_error(eta_A, eta_B):
+        Q_lambda = compute_Q_lambda(lambda_, eta_A, eta_B, Y0_A, Y0_B)
+        E_lambda = qber_ma_model(e_0, e_d, eta_A, eta_B, lambda_, Y0_A, Y0_B)
+
+        p_eta_A = transmitivity_pdf(
+            eta_A, mu_x, mu_y, sigma_x_A, sigma_y_A, zenith_angle_rad_A,
+            w_L_A, w_Leq_A, tau_zen_A, varphi_mod_A, wavelength,
+            h_OGS, h_atm, Cn2_profile, a
+        )
+        p_eta_B = transmitivity_pdf(
+            eta_B, mu_x, mu_y, sigma_x_B, sigma_y_B, zenith_angle_rad_B,
+            w_L_B, w_Leq_B, tau_zen_B, varphi_mod_B, wavelength,
+            h_OGS, h_atm, Cn2_profile, a
+        )
+        return Q_lambda * E_lambda * p_eta_A * p_eta_B
+
+    # 2重積分（η_A, η_B ∈ [0, 1]）
+    avg_yield, _ = dblquad(
+        integrand_gain, 0, 1,
+        lambda _: 0, lambda _: 1,
+        epsabs=1e-9, epsrel=1e-9
+    )
+    avg_error, _ = dblquad(
+        integrand_error, 0, 1,
+        lambda _: 0, lambda _: 1,
+        epsabs=1e-9, epsrel=1e-9
+    )
+
+    avg_qber = avg_error / avg_yield if avg_yield > 0 else 0
+    return avg_qber, avg_yield
+
+    
