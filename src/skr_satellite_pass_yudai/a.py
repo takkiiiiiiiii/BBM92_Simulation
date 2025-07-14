@@ -3,6 +3,7 @@ from os.path import join, basename
 from sys import path 
 
 libs_dir = join("/".join(getcwd().split("/")[:-2]))
+print(libs_dir)
 path.append(libs_dir)
 
 # filename = basename(globals()['__vsc_ipynb_file__']).split(".")[0]

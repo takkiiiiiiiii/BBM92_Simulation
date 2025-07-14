@@ -305,89 +305,51 @@ def compute_SKR_BBM92_finite(total_sifted_bits, qber_z, qber_x, f_ec):
     
     return max(0, final_key_length)
 
-
-
-def compute_SKR_without_Eve(qber_alice, yield_alice, qber_bob, yield_bob, f_ec=1.16, rep_rate=1e9):
+def compute_SKR_BBM92(
+    eta_A, eta_B, Y0_A, Y0_B, e_0, e_d, e_pol, lambda_signal,
+    rep_rate=1e9, sifting_coefficient=0.5, kr_efficiency=1.0):
     """
-    Eveを考慮せず、アリスとボブの性能からSecret Key Rateを計算します。
-    
-    Args:
-        qber_alice (float): 衛星-アリス間のQBER
-        yield_alice (float): アリスのYield（ふるい分け確率）
-        qber_bob (float): 衛星-ボブ間のQBER
-        yield_bob (float): ボブのYield
-        [cite_start]f_ec (float): 誤り訂正符号の効率。1.16は論文の値 [cite: 137]
-        rep_rate (float): 光子ソースの生成レート (pulses/sec)
+    Compute secret key rate for BBM92 protocol based on Ma et al. and related work.
+
+    Parameters:
+        eta_A: Total transmission efficiency to Alice
+        eta_B: Total transmission efficiency to Bob
+        Y0_A, Y0_B: Background count rates for Alice and Bob
+        e_0: Error rate for background
+        e_d: Detector error rate
+        e_pol: Polarization error
+        lambda_signal: mean photon pair rate (n_s / 2)
+        rep_rate: Source repetition rate
+        sifting_coefficient: Sifting factor (typically 0.5)
+        kr_efficiency: Key reconciliation efficiency
 
     Returns:
-        float: Secret Key Rate (bits/sec)
+        Secret key rate (bps)
     """
-    
-    # --- ステップ1: システム全体の性能を計算 ---
-    
-    # アリスとボブ両方がビットを検出する確率（同時検出確率）
-    yield_system = yield_alice * yield_bob
-    
-    # ふるい分け鍵におけるエラー率（アリスとボブの記録が食い違う確率）
-    qber_system = (1 - qber_alice) * qber_bob + qber_alice * (1 - qber_bob)
-    
-    # --- ステップ2: 相互情報量からエラー訂正コストを引く ---
-    
-    # エラー訂正によって消費される情報量の割合
-    # H(E_sys)は、QBERがqber_systemの場合のエントロピー
-    error_correction_cost = f_ec * entropy_func(qber_system)
-    
-    # 1ビットあたりの共有情報量からエラー訂正コストを引く
-    # これが、ふるい分け鍵1ビットから得られる安全な鍵の割合（秘匿率）
-    secure_key_fraction = 1 - error_correction_cost
-    
-    # --- ステップ3: 最終的な鍵レートを計算 ---
-    
-    # 1秒あたりのふるい分けビット数
-    sifted_key_rate = yield_system * rep_rate
-    
-    # 1秒あたりの安全な鍵のビット数 (SKR)
-    skr = sifted_key_rate * secure_key_fraction
-    
-    # SKRは負の値を取り得ない
-    return max(0, skr)
+    # Total gain Q_lambda (Eq. 9 from Ma et al.)
+    numerator = eta_A * eta_B * lambda_signal * (1 + lambda_signal)
+    denominator = ((1 + eta_A * lambda_signal) *
+                   (1 + eta_B * lambda_signal) *
+                   (1 + eta_A * lambda_signal + eta_B * lambda_signal - eta_A * eta_B * lambda_signal))
+    Q_lambda = 1 - (1 - Y0_A) * (1 - eta_A) ** lambda_signal
+    Q_lambda *= 1 - (1 - Y0_B) * (1 - eta_B) ** lambda_signal
 
-    
-def compute_SKR_final(qber_system, yield_alice, yield_bob, f_ec=1.16, rep_rate=1e9):
-    """
-    システム全体のQBERと、個別のYieldからSKRを計算します。
-    
-    Args:
-        qber_system (float): システム全体のQBER
-        yield_alice (float): アリスのYield
-        yield_bob (float): ボブのYield
-        f_ec (float): 誤り訂正符号の効率
-        rep_rate (float): 光子ソースの生成レート (pulses/sec)
+    # QBER E_lambda * Q_lambda (Eq. 13 from Ma et al.)
+    E_lambda_Q_lambda = (
+        e_0 * Q_lambda -
+        2 * (e_0 - e_d) * eta_A * eta_B * lambda_signal * (1 + lambda_signal)
+        / ((1 + eta_A * lambda_signal)
+           * (1 + eta_B * lambda_signal)
+           * (1 + eta_A * lambda_signal + eta_B * lambda_signal - eta_A * eta_B * lambda_signal))
+    )
+    E_lambda = E_lambda_Q_lambda / Q_lambda if Q_lambda > 0 else 0
 
-    Returns:
-        float: Secret Key Rate (bits/sec)
-    """
-    # 受け取った個別のYieldから、システム全体のYieldを計算
-    yield_system = yield_alice * yield_bob
-    
-    # エラー訂正のコストを計算
-    error_correction_cost = f_ec * entropy_func(qber_system)
-    
-    # 安全な鍵の割合を計算 (Eveは考慮しない)
-    secure_key_fraction = 1 - error_correction_cost
-    
-    # 最終的なSKRを計算
-    sifted_key_rate = yield_system * rep_rate
-    skr = sifted_key_rate * secure_key_fraction
-    
-    return max(0, skr)
+    # Secret key rate formula (asymptotic, from Ma et al. Eq. 15-like form)
+    H_E = entropy_func(E_lambda)
+    R = rep_rate * sifting_coefficient * Q_lambda * (1 - kr_efficiency * H_E)
 
+    return max(R, 0)
 
-def yield_from_photon_number(n, Y0_A, Y0_B, eta_A, eta_B):
-    term_A = 1 - (1 - Y0_A) * (1 - eta_A)**n
-    term_B = 1 - (1 - Y0_B) * (1 - eta_B)**n
-    Yn = term_A * term_B
-    return Yn
 
 def photon_number_probability(n, wavelength):
     """
@@ -408,6 +370,8 @@ def qber_ma_model(e0, ed, etaA, etaB, lambda_, Y0_A, Y0_B):
     E_lambda = (e0 * Q_lambda - numerator / denominator) / Q_lambda
     E_lambda = float(E_lambda)
     return E_lambda
+
+
 
 def compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B):
     """
@@ -432,9 +396,52 @@ def compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B):
     Q_lambda = 1 - term1 - term2 + term3
     return Q_lambda
 
+def yield_from_photon_number(n, Y0_A, Y0_B, eta_A, eta_B):
+    term_A = 1 - (1 - Y0_A) * (1 - eta_A)**n
+    term_B = 1 - (1 - Y0_B) * (1 - eta_B)**n
+    Yn = term_A * term_B
+    return Yn
+
+def pauli_x_application_probability_bob(n, e_0, e_d, Yn, eta_A, eta_B):
+    """
+    Calculate Pauli X error rate (e_n) based on Ma et al. Eq (11)-like formula.
+
+    Parameters:
+    - n : int
+        Photon pair index (number of photon pairs - 1)
+    - e_0 : float
+        Baseline error rate (e.g., due to misalignment, etc.)
+    - Yn : float
+        Yield for n+1 photon pairs (i.e., conditional detection probability)
+    - eta_A : float
+        Instantaneous transmittance for Alice
+    - eta_B : float
+        Instantaneous transmittance for Bob
+    - e_d : float, optional
+        Intrinsic detector error rate (default 0)
+
+    Returns:
+    - current_bob_qber : float
+        Pauli X error probability for n+1 photon pairs
+    """
+
+    n_plus_1 = n + 1
+    term1_numerator = 1 - (1 - eta_A)**n_plus_1 * (1 - eta_B)**n_plus_1
+    term1_denominator = 1 - (1 - eta_A) * (1 - eta_B)
+    term1 = term1_numerator / term1_denominator if term1_denominator != 0 else 0.0
+
+    term2_numerator = (1 - eta_A)**n_plus_1 - (1 - eta_B)**n_plus_1
+    term2_denominator = eta_B - eta_A
+    term2 = term2_numerator / term2_denominator if term2_denominator != 0 else 0.0
+
+    correction = (2 * (e_0 - e_d) / (n_plus_1 * Yn)) * (term1 - term2)
+
+    current_bob_qber = e_0 - correction
+    return current_bob_qber
 
 
-def pauli_x_error_probability(i, e_0, p_dark, e_pol, insta_eta_alice, insta_eta_bob):
+
+def pauli_x_error_probability_previous(i, e_0, p_dark, e_pol, insta_eta_alice, insta_eta_bob):
     if i == 0: # n = 0 (a0)
         current_alice_qber = 0.5
         current_bob_qber = 0.5
