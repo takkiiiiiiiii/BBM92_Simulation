@@ -367,7 +367,6 @@ def qber_ma_model(e0, ed, etaA, etaB, lambda_, Y0_A, Y0_B):
     numerator = 2 * (e0 - ed) * etaA * etaB * lambda_ * (1 + lambda_)
     denominator = (1 + etaA * lambda_) * (1 + etaB * lambda_) * (1 + etaA * lambda_ + etaB * lambda_ - etaA * etaB * lambda_)
     Q_lambda = compute_Q_lambda(lambda_, etaA, etaB, Y0_A, Y0_B)
-    print(f'Q_lambda : {Q_lambda}')
     E_lambda = (e0 * Q_lambda - numerator / denominator) / Q_lambda
     E_lambda = float(E_lambda)
     return E_lambda
@@ -439,7 +438,7 @@ def pauli_x_application_probability_bob(n, e_0, e_d, Yn, eta_A, eta_B):
 
 
 
-def compute_avg_qber_bbm92_2d(
+def compute_avg_qber_bbm92(
         sigma_theta_x, sigma_theta_y, slant_distance_A, slant_distance_B,
         mu_x, mu_y, zenith_angle_rad_A, zenith_angle_rad_B,
         h_OGS, h_atm, w_L_A, w_L_B, tau_zen_A, tau_zen_B,
@@ -461,7 +460,6 @@ def compute_avg_qber_bbm92_2d(
         slant_distance_B, zenith_angle_rad_B, w_L_B, tau_zen_B
     )
 
-    # Gain用積分
     def integrand_gain(eta_A, eta_B):
         Q_lambda = compute_Q_lambda(lambda_, eta_A, eta_B, Y0_A, Y0_B)
 
@@ -477,7 +475,6 @@ def compute_avg_qber_bbm92_2d(
         )
         return Q_lambda * p_eta_A * p_eta_B
 
-    # Error bits用積分
     def integrand_error(eta_A, eta_B):
         Q_lambda = compute_Q_lambda(lambda_, eta_A, eta_B, Y0_A, Y0_B)
         E_lambda = qber_ma_model(e_0, e_d, eta_A, eta_B, lambda_, Y0_A, Y0_B)
@@ -494,7 +491,6 @@ def compute_avg_qber_bbm92_2d(
         )
         return Q_lambda * E_lambda * p_eta_A * p_eta_B
 
-    # 2重積分（η_A, η_B ∈ [0, 1]）
     avg_yield, _ = dblquad(
         integrand_gain, 0, 1,
         lambda _: 0, lambda _: 1,
