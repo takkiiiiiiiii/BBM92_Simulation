@@ -2,7 +2,7 @@
 a = 0.75
 
 # average number of photon
-n_s = 0.053
+n_s = 1.0
 
 # average number of photon of decoy-state signal
 n_d = 0.09
