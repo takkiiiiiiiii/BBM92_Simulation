@@ -492,15 +492,27 @@ def compute_avg_qber_bbm92(
         return Q_lambda * E_lambda * p_eta_A * p_eta_B
 
     avg_yield, _ = dblquad(
-        integrand_gain, 0, 1,
-        lambda _: 0, lambda _: 1,
+        integrand_gain, 0, np.inf,
+        lambda _: 0, lambda _: np.inf,
         epsabs=1e-9, epsrel=1e-9
     )
     avg_error, _ = dblquad(
-        integrand_error, 0, 1,
-        lambda _: 0, lambda _: 1,
+        integrand_error, 0, np.inf,
+        lambda _: 0, lambda _: np.inf,
         epsabs=1e-9, epsrel=1e-9
     )
+
+
+    # avg_yield, _ = dblquad(
+    #     integrand_gain, 0, 1,
+    #     lambda _: 0, lambda _: 1,
+    #     epsabs=1e-9, epsrel=1e-9
+    # )
+    # avg_error, _ = dblquad(
+    #     integrand_error, 0, 1,
+    #     lambda _: 0, lambda _: 1,
+    #     epsabs=1e-9, epsrel=1e-9
+    # )
 
     avg_qber = avg_error / avg_yield if avg_yield > 0 else 0
     return avg_qber, avg_yield
