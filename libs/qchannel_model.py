@@ -284,73 +284,25 @@ def entropy_func(p):
     res = -p * np.log2(p) - (1-p) * np.log2(1-p)
     return res
 
-def compute_SKR_BBM92_finite(total_sifted_bits, qber_z, qber_x, f_ec):
-    """
-    論文(Ecker et al.)の式(1)に基づき、有限長鍵の長さを計算します。
-    """
-    # 2つの基底で得られるビット数は等しいと仮定
-    N_s_z = total_sifted_bits / 2.0
-    N_s_x = total_sifted_bits / 2.0
-    
-    # 位相誤り率をQBERから推定
-    E_ph_z = qber_x
-    E_ph_x = qber_z
 
-    # Z基底から得られる安全な鍵の長さ
-    term_z = N_s_z * (1 - entropy_func(E_ph_z) - f_ec * entropy_func(qber_z))
-    
-    # X基底から得られる安全な鍵の長さ
-    term_x = N_s_x * (1 - entropy_func(E_ph_x) - f_ec * entropy_func(qber_x))
-    
-    final_key_length = term_z + term_x
-    
-    return max(0, final_key_length)
-
-def compute_SKR_BBM92(
-    eta_A, eta_B, Y0_A, Y0_B, e_0, e_d, e_pol, lambda_signal,
-    rep_rate=1e9, sifting_coefficient=0.5, kr_efficiency=1.0):
+def compute_SKR_BBM92(qber, avg_yield, rep_rate=1e9, sifting_coefficient=0.5, kr_efficiency=1.22):
     """
-    Compute secret key rate for BBM92 protocol based on Ma et al. and related work.
+    Compute Secret Key Rate for BBM92 protocol.
 
     Parameters:
-        eta_A: Total transmission efficiency to Alice
-        eta_B: Total transmission efficiency to Bob
-        Y0_A, Y0_B: Background count rates for Alice and Bob
-        e_0: Error rate for background
-        e_d: Detector error rate
-        e_pol: Polarization error
-        lambda_signal: mean photon pair rate (n_s / 2)
-        rep_rate: Source repetition rate
-        sifting_coefficient: Sifting factor (typically 0.5)
-        kr_efficiency: Key reconciliation efficiency
+    - qber: float, Quantum Bit Error Rate (0 to 1)
+    - avg_yield: float, average coincidence probability (i.e., Q_lambda)
+    - rep_rate: float, source repetition rate [Hz]
+    - sifting_coefficient: float, e.g., 0.5 for BBM92
+    - kr_efficiency: float, error correction inefficiency factor (f)
 
     Returns:
-        Secret key rate (bps)
+    - skr: float, secret key rate [bit/s]
     """
-    # Total gain Q_lambda (Eq. 9 from Ma et al.)
-    numerator = eta_A * eta_B * lambda_signal * (1 + lambda_signal)
-    denominator = ((1 + eta_A * lambda_signal) *
-                   (1 + eta_B * lambda_signal) *
-                   (1 + eta_A * lambda_signal + eta_B * lambda_signal - eta_A * eta_B * lambda_signal))
-    Q_lambda = 1 - (1 - Y0_A) * (1 - eta_A) ** lambda_signal
-    Q_lambda *= 1 - (1 - Y0_B) * (1 - eta_B) ** lambda_signal
-
-    # QBER E_lambda * Q_lambda (Eq. 13 from Ma et al.)
-    E_lambda_Q_lambda = (
-        e_0 * Q_lambda -
-        2 * (e_0 - e_d) * eta_A * eta_B * lambda_signal * (1 + lambda_signal)
-        / ((1 + eta_A * lambda_signal)
-           * (1 + eta_B * lambda_signal)
-           * (1 + eta_A * lambda_signal + eta_B * lambda_signal - eta_A * eta_B * lambda_signal))
-    )
-    E_lambda = E_lambda_Q_lambda / Q_lambda if Q_lambda > 0 else 0
-
-    # Secret key rate formula (asymptotic, from Ma et al. Eq. 15-like form)
-    H_E = entropy_func(E_lambda)
-    R = rep_rate * sifting_coefficient * Q_lambda * (1 - kr_efficiency * H_E)
-
-    return max(R, 0)
-
+    H2 = entropy_func(qber)
+    R_key_bit = rep_rate * avg_yield * sifting_coefficient
+    skr = R_key_bit * (1 - kr_efficiency * H2)
+    return max(skr, 0)  # SKRが負になるのを防ぐ
 
 def photon_number_probability(n, wavelength):
     """
